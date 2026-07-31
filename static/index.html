@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 会议纪要智能助手</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f7fa; color: #333; }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 28px; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 32px; font-size: 14px; }
+  .card { background: #fff; border-radius: 12px; padding: 28px; margin-bottom: 24px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+  .card h3 { margin-bottom: 16px; font-size: 18px; border-bottom: 2px solid #4f6ef7; padding-bottom: 8px; display: inline-block; }
+  textarea { width: 100%; min-height: 200px; border: 1px solid #ddd; border-radius: 8px; padding: 14px; font-size: 14px; resize: vertical; font-family: inherit; }
+  textarea:focus { outline: none; border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.15); }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+  input[type="text"] { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+  input[type="text"]:focus { outline: none; border-color: #4f6ef7; }
+  button { background: #4f6ef7; color: #fff; border: none; border-radius: 8px; padding: 10px 28px; font-size: 15px; cursor: pointer; transition: background .2s; }
+  button:hover { background: #3b5de7; }
+  button:disabled { background: #b0bec5; cursor: not-allowed; }
+  .loading { text-align: center; padding: 32px; color: #888; display: none; }
+  .loading.show { display: block; }
+  .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #e0e0e0; border-top-color: #4f6ef7; border-radius: 50%; animation: spin .8s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .result { display: none; }
+  .result.show { display: block; }
+  .field { margin-bottom: 16px; }
+  .field-label { font-weight: 600; color: #555; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
+  .field-value { font-size: 15px; line-height: 1.7; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; margin-bottom: 4px; }
+  .tag-high { background: #ffebee; color: #c62828; }
+  .tag-medium { background: #fff8e1; color: #f57f17; }
+  .tag-low { background: #e8f5e9; color: #2e7d32; }
+  .tag-participant { background: #e3f2fd; color: #1565c0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+  th { background: #f9fafb; font-weight: 600; color: #555; }
+  .download-bar { display: flex; gap: 12px; align-items: center; padding: 16px 0; }
+  .download-bar a { background: #27ae60; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; transition: background .2s; }
+  .download-bar a:hover { background: #1e8449; }
+  .error { color: #c62828; background: #ffebee; padding: 12px 16px; border-radius: 8px; margin-top: 12px; display: none; }
+  .error.show { display: block; }
+  .example-btn { color: #4f6ef7; cursor: pointer; font-size: 13px; text-decoration: underline; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>AI 会议纪要智能助手</h1>
+  <p class="subtitle">上传会议录音转写文本 → 结构化纪要 + 待办分级 + 日历文件下载</p>
+
+  <div class="card">
+    <h3>输入会议转写文本</h3>
+    <textarea id="transcript" placeholder="请粘贴会议录音转写文本..."></textarea>
+    <div class="row">
+      <input type="text" id="meetingTitle" placeholder="会议标题（可选，留空则自动提取）">
+      <button id="submitBtn" onclick="submit()">生成纪要</button>
+      <span class="example-btn" onclick="fillExample()">填入示例</span>
+    </div>
+    <div class="error" id="error"></div>
+  </div>
+
+  <div class="loading" id="loading">
+    <span class="spinner"></span> AI 正在分析会议内容，请稍候...
+  </div>
+
+  <div class="result" id="result">
+    <div class="card">
+      <h3>会议纪要</h3>
+      <div class="field">
+        <div class="field-label">会议标题</div>
+        <div class="field-value" id="r-title"></div>
+      </div>
+      <div class="field">
+        <div class="field-label">日期</div>
+        <div class="field-value" id="r-date"></div>
+      </div>
+      <div class="field">
+        <div class="field-label">参会人员</div>
+        <div class="field-value" id="r-participants"></div>
+      </div>
+      <div class="field">
+        <div class="field-label">摘要</div>
+        <div class="field-value" id="r-summary"></div>
+      </div>
+      <div class="field">
+        <div class="field-label">核心要点</div>
+        <div class="field-value" id="r-keypoints"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>待办事项（按优先级排序）</h3>
+      <div id="r-action-table"></div>
+    </div>
+
+    <div class="card">
+      <h3>关键时间节点</h3>
+      <div id="r-timepoints"></div>
+    </div>
+
+    <div class="card">
+      <div class="download-bar">
+        <span>日历文件：</span>
+        <a id="ics-link" href="#" download>下载 .ics 文件</a>
+        <span style="color:#888;font-size:13px">可直接导入手机/Outlook 日历</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const example = `会议日期：2026-07-31
+参会人员：张三、李四、王五、赵六
+
+张三：大家好，今天我们讨论一下Q3产品上线计划。目前后端接口开发已经完成了80%，前端还差登录模块和支付模块。
+
+李四：登录模块我这边预计8月5号前能搞定，但支付模块需要后端先给接口文档，这个比较紧急，不然会阻塞前端进度。
+
+张三：支付接口文档王五你这边什么时候能给？
+
+王五：我这边还有个线上bug在处理，明天下午之前我把文档给出来。
+
+张三：好，那这个优先级很高，王五你务必明天下午3点前完成。另外赵六，你负责的压测什么时候开始？
+
+赵六：我计划8月10号开始第一轮压测，8月15号出报告。如果没问题的话，8月20号可以正式上线。
+
+张三：可以，那我们就定8月20号上线。大家还有别的问题吗？
+
+李四：上次说的那个用户反馈的优化需求，要不要排进这个版本？
+
+张三：那个不紧急，优先级放低，有时间再做。下周一我们开个上线前确认会，暂定8月7号下午2点。
+
+王五：好的，没问题。
+
+张三：那今天就到这，散会。`;
+
+function fillExample() {
+  document.getElementById('transcript').value = example;
+  document.getElementById('meetingTitle').value = 'Q3产品上线计划讨论会';
+}
+
+async function submit() {
+  const transcript = document.getElementById('transcript').value.trim();
+  const meetingTitle = document.getElementById('meetingTitle').value.trim();
+  const errorEl = document.getElementById('error');
+  const resultEl = document.getElementById('result');
+  const loadingEl = document.getElementById('loading');
+  const btn = document.getElementById('submitBtn');
+
+  errorEl.classList.remove('show');
+  resultEl.classList.remove('show');
+
+  if (transcript.length < 10) {
+    errorEl.textContent = '请输入至少10个字符的会议转写文本';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  loadingEl.classList.add('show');
+
+  try {
+    const res = await fetch('/api/minutes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript, meeting_title: meetingTitle || null }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || json.detail || '未知错误');
+
+    render(json.data, json.ics_url);
+    resultEl.classList.add('show');
+  } catch (e) {
+    errorEl.textContent = '错误: ' + e.message;
+    errorEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    loadingEl.classList.remove('show');
+  }
+}
+
+function render(data, icsUrl) {
+  document.getElementById('r-title').textContent = data.title;
+  document.getElementById('r-date').textContent = data.date;
+  document.getElementById('r-summary').textContent = data.summary;
+
+  const participants = (data.participants || []).map(p => `<span class="tag tag-participant">${p}</span>`).join(' ');
+  document.getElementById('r-participants').innerHTML = participants || '-';
+
+  const keypoints = (data.key_points || []).map(k => `<li>${k}</li>`).join('');
+  document.getElementById('r-keypoints').innerHTML = keypoints ? `<ul style="padding-left:20px">${keypoints}</ul>` : '-';
+
+  // 待办表格
+  const items = (data.action_items || []).sort((a,b) => {
+    const order = {'高':0,'中':1,'低':2};
+    return order[a.priority] - order[b.priority];
+  });
+  let table = '<table><tr><th>优先级</th><th>待办事项</th><th>负责人</th><th>截止时间</th></tr>';
+  items.forEach(item => {
+    const pClass = {'高':'tag-high','中':'tag-medium','低':'tag-low'}[item.priority] || '';
+    table += `<tr>
+      <td><span class="tag ${pClass}">${item.priority}</span></td>
+      <td>${item.content}</td>
+      <td>${item.assignee || '-'}</td>
+      <td>${item.deadline || '-'}</td>
+    </tr>`;
+  });
+  table += '</table>';
+  document.getElementById('r-action-table').innerHTML = items.length ? table : '<p style="color:#888">无待办事项</p>';
+
+  // 时间节点
+  const tps = (data.key_time_points || []).map(tp =>
+    `<li><strong>${tp.datetime}</strong> — ${tp.title}${tp.description ? '（' + tp.description + '）' : ''}</li>`
+  ).join('');
+  document.getElementById('r-timepoints').innerHTML = tps ? `<ul style="padding-left:20px">${tps}</ul>` : '<p style="color:#888">无关键时间节点</p>';
+
+  // ics 下载链接
+  const link = document.getElementById('ics-link');
+  if (icsUrl) {
+    link.href = icsUrl;
+    link.style.display = 'inline';
+  } else {
+    link.style.display = 'none';
+  }
+}
+</script>
+</body>
+</html>
